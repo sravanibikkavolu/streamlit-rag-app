@@ -1,0 +1,3 @@
+RAG stands for Retrieval Augmented Generation.
+Streamlit is used for building web apps in Python.
+LangChain helps connect LLMs with external data sources.
