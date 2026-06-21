@@ -3,7 +3,9 @@ from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import chromadb
-import ollama
+from groq import Groq
+
+st.set_page_config(page_title="PDF RAG Chatbot")
 
 st.title("📚 PDF RAG Chatbot")
 
@@ -36,14 +38,9 @@ if uploaded_file:
     model = SentenceTransformer("all-MiniLM-L6-v2")
     embeddings = model.encode(chunks)
 
-    # Create ChromaDB collection
+    # Create ChromaDB
     client = chromadb.Client()
 
-    collection = client.get_or_create_collection(
-        name="pdf_collection"
-    )
-
-    # Clear old data to avoid duplicate IDs
     try:
         client.delete_collection("pdf_collection")
     except:
@@ -53,7 +50,7 @@ if uploaded_file:
         name="pdf_collection"
     )
 
-    # Store chunks in ChromaDB
+    # Store embeddings
     for i, chunk in enumerate(chunks):
         collection.add(
             ids=[str(i)],
@@ -65,23 +62,19 @@ if uploaded_file:
     st.success(f"Created {len(embeddings)} embeddings")
     st.success("Stored embeddings in ChromaDB")
 
-    # Optional: show first few chunks
     with st.expander("View First 3 Chunks"):
         for i, chunk in enumerate(chunks[:3]):
             st.subheader(f"Chunk {i+1}")
             st.write(chunk)
 
-    # User question
     question = st.text_input(
         "Ask a question about the PDF"
     )
 
     if question:
 
-        # Create embedding for question
         question_embedding = model.encode([question])
 
-        # Retrieve relevant chunks
         results = collection.query(
             query_embeddings=question_embedding.tolist(),
             n_results=3
@@ -94,7 +87,9 @@ if uploaded_file:
         prompt = f"""
 You are a helpful assistant.
 
-Answer the user's question using ONLY the context provided.
+Answer ONLY from the provided context.
+If the answer is not available in the context, say:
+"I could not find that information in the PDF."
 
 Context:
 {context}
@@ -105,8 +100,12 @@ Question:
 
         with st.spinner("Generating answer..."):
 
-            response = ollama.chat(
-                model="llama3",
+            groq_client = Groq(
+                api_key=st.secrets["GROQ_API_KEY"]
+            )
+
+            response = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
                 messages=[
                     {
                         "role": "user",
@@ -115,7 +114,7 @@ Question:
                 ]
             )
 
-            answer = response["message"]["content"]
+            answer = response.choices[0].message.content
 
         st.subheader("Answer")
         st.write(answer)
